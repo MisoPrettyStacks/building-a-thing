@@ -1,0 +1,49 @@
+name: forecast-runner
+
+# Continuous runner: each job loops for ~5h05m, issuing a forecast every closed 5-minute bar, scoring it,
+# running the accuracy agent and publishing the ledger to the `data` branch. Jobs are scheduled every 5h and
+# queued (never cancelled), so the next one starts as the previous one ends.
+on:
+  schedule:
+    - cron: '0 0,5,10,15,20 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast-runner
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Self-tests gate (math, no-leakage, ledger integrity)
+        run: node scripts/selftest.js && node scripts/selftest-pipeline.js
+      - name: Prepare data branch
+        run: |
+          git config --global user.name "forecast-bot"
+          git config --global user.email "forecast-bot@users.noreply.github.com"
+          REMOTE="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$REMOTE" data >/dev/null 2>&1; then
+            git clone --depth 1 --branch data "$REMOTE" data-branch
+          else
+            mkdir data-branch && cd data-branch && git init -q -b data && git remote add origin "$REMOTE"
+          fi
+      - name: Run forecaster
+        run: node scripts/runner.js --data ./data-branch --minutes 305 --push
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+      - name: Keep scheduled workflows enabled
+        run: |
+          git fetch origin main --depth 1 -q || exit 0
+          LAST=$(git log -1 --format=%ct origin/main)
+          if [ $(( $(date +%s) - LAST )) -gt $(( 45*86400 )) ]; then
+            git checkout -q main && git commit --allow-empty -q -m "chore: keep scheduled workflow active" && git push -q origin main || true
+          fi
