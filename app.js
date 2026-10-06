@@ -279,7 +279,7 @@ function metricsHtml(w, { showMembers = true } = {}) {
     : 'No statistically significant skill over 50% yet. For a near-efficient 15-minute market this is the expected state until the sample is large; the agent keeps the forecasts calibrated and shrunk accordingly.'}</p>`;
   return h;
 }
-function drawReliability(cv, bins, deff) {
+function drawReliability(cv, bins, deff, note) {
   const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
@@ -310,6 +310,7 @@ function drawReliability(cv, bins, deff) {
     ctx.beginPath(); ctx.arc(X(b.p), Y(b.y), 4, 0, 6.2832); ctx.fill();
   }
   ctx.fillStyle = ink;
+  if (note) { ctx.fillStyle = muted; ctx.font = '11px system-ui'; ctx.fillText(note, pad.l + 6, pad.t + 12); }
 }
 function drawRolling(cv, series) {
   const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
@@ -339,7 +340,12 @@ function renderScore(win) {
     return;
   }
   body.innerHTML = metricsHtml(w) + '<div class="grid g2" style="margin-top:14px"><div><h3>Reliability (equal-count bins, 95% bars use overlap-adjusted n)</h3><canvas id="relCv" class="canvas-sm"></canvas></div><div><h3>Rolling 12-hour Brier: model vs climatology</h3><canvas id="rollCv" class="canvas-sm"></canvas></div></div>';
-  drawReliability($('relCv'), w.bins, w.deff || 2.36);
+  let rb = w.bins, rnote = '';
+  const ab = summary.windows && summary.windows.all && summary.windows.all.bins;
+  if ((!rb || rb.length < 2) && win !== 'all' && ab && ab.length >= 2) {
+    rb = ab; rnote = 'not enough in this window yet — showing all-time';
+  }
+  drawReliability($('relCv'), rb, w.deff || 2.36, rnote);
   drawRolling($('rollCv'), win === 'all' ? summary.rolling : null);
 }
 
