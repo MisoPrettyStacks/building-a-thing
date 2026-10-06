@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XRP 15-Minute Forecast</title>
+<meta name="description" content="Live XRP price, a calibrated 15-minute probability forecast, scored in public with Brier score, run by a self-correcting agent.">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>XRP 15-Minute Forecast</h1>
+    <p class="sub">A calibrated probability that XRP/USD is higher in 15 minutes, issued every 5 minutes, scored in public, and policed by an agent that is only allowed to change the model when the evidence is statistically strong.</p>
+    <p style="margin:8px 0 0"><span class="badge"><span class="dot" id="hbDot"></span><span id="hbText">checking runner…</span></span>
+      <span class="badge"><span class="dot" id="wsDot"></span><span id="wsText">price feed…</span></span></p>
+  </div>
+  <div class="price">
+    <div class="big" id="px">—</div>
+    <div class="meta">XRP-USD · Coinbase Exchange · <span id="pxTime">live</span></div>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#live">Live</a><a href="#score">Live accuracy</a><a href="#backtest">Backtest</a><a href="#agent">Agent</a>
+  <a href="#method">Methodology</a><a href="#integrity">Integrity &amp; source</a><a href="#refs">References</a>
+</nav>
+
+<section id="live" class="chartrow">
+  <div class="card" style="margin:0">
+    <canvas id="chart" aria-label="Live XRP-USD 1-minute candles with the current forecast cone"></canvas>
+    <div class="muted" style="font-size:12px;margin-top:6px">1-minute candles (real Coinbase data). The shaded cone is the official forecast's 50% and 90% intervals for the target time; dots mark recently scored forecasts (green = direction called correctly).</div>
+  </div>
+  <div class="card" style="margin:0" id="fcCard">
+    <div class="muted">Current official forecast</div>
+    <div class="pup" id="pUp">—</div>
+    <div class="muted" style="margin-top:-2px">probability XRP is higher in 15 min</div>
+    <div class="bar"><i id="pBar" style="width:50%"></i><b></b></div>
+    <table>
+      <tr><th>Issued</th><td id="fcIssued">—</td></tr>
+      <tr><th>Resolves</th><td id="fcResolve">—</td></tr>
+      <tr><th>Price at issue</th><td id="fcC0">—</td></tr>
+      <tr><th>50% interval</th><td id="fcI50">—</td></tr>
+      <tr><th>90% interval</th><td id="fcI90">—</td></tr>
+      <tr><th>Model version</th><td id="fcVer">—</td></tr>
+      <tr><th>Next forecast</th><td id="fcNext">—</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="score" class="card">
+  <h2>Live out-of-sample accuracy</h2>
+  <p class="muted" style="margin-top:0">Every number below is computed from the public, hash-chained ledger of forecasts that were issued <em>before</em> their outcome existed. Nothing is back-filled.</p>
+  <div class="tabs" id="winTabs">
+    <button data-w="all" class="on">All time</button><button data-w="last7d">Last 7 days</button><button data-w="last24h">Last 24 hours</button>
+  </div>
+  <div id="scoreBody"><div class="empty">Loading scoreboard…</div></div>
+</section>
+
+<section id="backtest" class="card">
+  <h2>Walk-forward replay of recent real candles (computed in your browser)</h2>
+  <p class="muted" style="margin-top:0">Your browser downloads the latest real 5-minute Coinbase candles and replays the exact production engine through them, one bar at a time, feeding it each outcome only after it would have been known. This is a reproducible sanity check you can run yourself.</p>
+  <div class="note">The agent tunes hyper-parameters on overlapping recent data, so this replay is <b>in-sample with respect to tuning</b>. Only the live ledger above is a true out-of-sample score.</div>
+  <div id="btStatus" class="muted">Preparing…</div>
+  <div id="btBody"></div>
+</section>
+
+<section id="agent" class="card">
+  <h2>Accuracy agent</h2>
+  <p class="muted" style="margin-top:0">Autonomous loop: observe → propose → test → act → verify. It cannot change the model unless the change beats the champion on held-out bars with a multiplicity-corrected significance test, and it reverts automatically if the live record says it was wrong.</p>
+  <div class="grid g2">
+    <div>
+      <h3>Status</h3>
+      <table id="agentStatus"></table>
+      <h3>Current champion parameters</h3>
+      <table id="paramTable"></table>
+    </div>
+    <div>
+      <h3>Learned model state (latest forecast)</h3>
+      <table id="stateTable"></table>
+      <h3>Agent decisions (newest first)</h3>
+      <div class="log" id="agentLog"><div class="muted">No decisions logged yet.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="method" class="card method">
+  <h2>Methodology, mathematics and theory</h2>
+
+  <h3>0. What is being forecast, and what “accurate” means here</h3>
+  <p>Let $P_t$ be the XRP/USD price at the close of a 5-minute bar, $h=3$ bars, and $S_t=\ln(P_{t+h}/P_t)$ the 15-minute log return. The forecast is $p_t=\Pr(S_t>0\mid\mathcal F_t)$ where $\mathcal F_t$ contains only bars that had already closed at time $t$. The outcome is $y_t=\mathbf 1[S_t>0]$ (exact ties are excluded and counted).</p>
+  <p>Accuracy is judged with <b>strictly proper scoring rules</b>, which a forecaster maximises in expectation only by reporting its true belief (Brier 1950; Gneiting &amp; Raftery 2007). Short-horizon crypto prices are close to a martingale, so a forecaster that claims much more than a sliver of skill will be punished by the Brier score. The reference is the no-skill forecast $p=\tfrac12$ with $BS=0.25$. The design goal is therefore: <i>be calibrated first, extract whatever small, real skill exists second, and never be more confident than the live record justifies.</i></p>
+
+  <h3>1. Data</h3>
+  <ul>
+    <li>Source: Coinbase Exchange public candles for XRP-USD, 300-second granularity, closed bars only (a bar is used only after $t_{\text{start}}+300\le$ now). No keys, no paid feeds, no synthetic or placeholder values anywhere in the pipeline.</li>
+    <li>Missing bars (no trades) are filled with the previous close and zero volume; the number of filled bars is published.</li>
+    <li>Kraken and Bitstamp spot prices are fetched each cycle as an independent cross-check; the divergence is published.</li>
+    <li>Both the forecast and its resolution use the same venue, so a basis between exchanges cannot leak into the score.</li>
+  </ul>
+
+  <h3>2. Causal features</h3>
+  <p>Volatility is an exponentially weighted moving average of squared 5-minute log returns $r_t=\ln(P_t/P_{t-1})$ (RiskMetrics, J.P. Morgan 1996):</p>
+  $$\sigma_t^2=\lambda\,\sigma_{t-1}^2+(1-\lambda)\,r_t^2,\qquad \lambda=0.94 .$$
+  <p>Every feature is dimensionless (scaled by volatility) and winsorised at $\pm6$:</p>
+  $$z_{k,t}=\frac{\ln(P_t/P_{t-k})}{\sigma_t\sqrt k},\ k\in\{1,3,12,36,144,288\},\qquad \mathrm{dev}_{n,t}=\frac{\ln P_t-\mathrm{EMA}_n(\ln P)_t}{\sigma_t\sqrt n},\ n\in\{12,48\},$$
+  $$\mathrm{volsign}_t=\operatorname{sign}(r_t)\cdot\operatorname{clip}\!\Big(\frac{\ln(1+V_t)-m_t}{s_t},-4,4\Big),$$
+  <p>with $m_t,s_t$ an exponentially weighted mean and standard deviation of $\ln(1+V)$ (decay 0.99) computed before bar $t$ is included. The set of features in use is itself a tunable part of the configuration.</p>
+
+  <h3>3. Four base models</h3>
+  <ol>
+    <li><b>Climatology</b>: $b_t=\lambda_b b_{t-1}+(1-\lambda_b)y$, with $\lambda_b=0.999$. This is also the scoring baseline.</li>
+    <li><b>Online logistic regression</b>: $p=\sigma(w^\top x_t)$ trained by AdaGrad (Duchi, Hazan &amp; Singer 2011) on the log-loss gradient $g=(p-y)x+\ell_2 w$: &nbsp; $G_k\leftarrow G_k+g_k^2,\; w_k\leftarrow w_k-\eta\,g_k/(\sqrt{G_k}+\epsilon)$.</li>
+    <li><b>Drift model</b>: $p=\Phi\!\big(\hat\mu_t\sqrt h/\sigma_t\big)$, $\hat\mu_t$ an EWMA of returns (decay 0.999) that starts at 0, so it is shrunk toward a martingale by construction.</li>
+    <li><b>Short-horizon model</b>: a 3-parameter logistic regression on $(z_1,z_3,1)$ capturing bid-ask-bounce and very short momentum.</li>
+  </ol>
+
+  <h3>4. Pooling, calibration and shrinkage</h3>
+  <p>The members are combined by <b>log-odds (geometric) pooling</b> with simplex weights learned by the <b>Hedge algorithm with fixed share</b> (Freund &amp; Schapire 1997; Herbster &amp; Warmuth 1998):</p>
+  $$z_t=\sum_{k=1}^{4}w_{k}\,\mathrm{logit}(p_{k,t}),\qquad \tilde w_k=\frac{w_k e^{-\eta\,\ell_k}}{\sum_j w_j e^{-\eta\,\ell_j}},\qquad w_k\leftarrow(1-\alpha)\,\tilde w_k+\frac{\alpha}{4},$$
+  <p>where $\ell_k$ is member $k$'s log-loss on the newly revealed outcome. Fixed share lets the weights recover quickly when the best member changes (regime change). The pooled log-odds are then recalibrated online with Platt scaling (Platt 1999; Guo et al. 2017):</p>
+  $$\tilde p_t=\sigma(a z_t+b),\quad a\in[0,1.5],\ b\in[-0.2,0.2],$$
+  <p>updated by stochastic gradient descent on log-loss. Finally a <b>shrinkage factor</b> $\lambda_s\in[0,1]$, set by the agent from live evidence (section 8), gives the published probability</p>
+  $$p_t=\operatorname{clip}\!\big(\tfrac12+\lambda_s(\tilde p_t-\tfrac12),\,0.02,\,0.98\big).$$
+
+  <h3>5. Full predictive distribution (intervals that agree with the probability)</h3>
+  <p>The 15-minute return is modelled as a location-scale Student-t, $S=s\,(\mu'+\varepsilon)$, $\varepsilon\sim t_\nu$, with $\mu'=T_\nu^{-1}(p_t)$. Then $\Pr(S>0)=T_\nu(\mu')=p_t$ exactly, so the direction probability and the quantile forecasts can never contradict each other. The scale is calibrated from realised standardised returns $u_j=S_j/(\sigma_j\sqrt h)$:</p>
+  $$m_2\leftarrow\lambda_k m_2+(1-\lambda_k)u^2,\quad m_4\leftarrow\lambda_\kappa m_4+(1-\lambda_\kappa)u^4,\quad \kappa=\frac{m_4}{m_2^2},\quad \nu=4+\frac{6}{\kappa-3}\ (\text{clipped to }[3.5,30]),$$
+  $$s_t=\frac{\sqrt{m_2}\;\sigma_t\sqrt h}{\sqrt{\nu/(\nu-2)}},\qquad q_\tau=s_t\,\big(\mu'+t_{\nu,\tau}\big),\ \tau\in\{.05,.10,.25,.50,.75,.90,.95\}.$$
+  <p>The kurtosis relation uses the excess kurtosis $6/(\nu-4)$ of $t_\nu$. The $t$ CDF and quantiles are computed from the regularised incomplete beta function implemented in <code>lib/stats.js</code> and checked against published tables in the self-test.</p>
+
+  <h3>6. Learning protocol and the no-leakage guarantee</h3>
+  <p>The label of the forecast made at bar $j$ becomes known only when bar $j+h$ closes. At bar $i$ the engine first learns from $j=i-h$ (never later), then forecasts. Forecast <i>and</i> backtest use the single function <code>walkForward()</code>, so there is no separate research path that could differ from production. <code>scripts/selftest.js</code> mutates every bar after time $T$ and asserts that all forecasts and quantiles up to $T$ are bit-identical; it also checks that the engine reaches the exact oracle score on a planted autocorrelated series and scores about 0.25 on pure noise (it does no harm).</p>
+
+  <h3>7. Scoring statistics shown on this page</h3>
+  <ul>
+    <li><b>Brier score</b> $BS=\frac1n\sum_i(p_i-y_i)^2$; <b>skill</b> $BSS=1-BS/BS_{\text{ref}}$ against $0.25$ and against the climatology member. Confidence interval: moving-block bootstrap (Künsch 1989), block length 12, 1000 resamples, fixed seed.</li>
+    <li><b>Log loss</b> $-\frac1n\sum[y\ln p+(1-y)\ln(1-p)]$.</li>
+    <li><b>Reliability</b>: equal-count bins; $\mathrm{ECE}=\sum_b\frac{n_b}{n}|\bar y_b-\bar p_b|$; Murphy (1973) decomposition $BS\approx\mathrm{REL}-\mathrm{RES}+\mathrm{UNC}$ with $\mathrm{UNC}=\bar y(1-\bar y)$; and the calibration regression $\mathrm{logit}\Pr(y=1)=\alpha+\beta\,\mathrm{logit}(p)$ (ideal: $\alpha=0,\beta=1$).</li>
+    <li><b>Directional hit rate</b> with a Wilson interval and a binomial test against 50%. Because 15-minute windows issued every 5 minutes overlap, consecutive outcomes are correlated. Under a driftless random walk the variance inflation is $D_{\text{eff}}=1+2\sum_{k=1}^{h-1}\frac{2}{\pi}\arcsin(1-k/h)\approx2.36$, so the effective sample size is $n/D_{\text{eff}}$ and all hit-rate intervals use it.</li>
+    <li><b>Diebold–Mariano test</b> (Diebold &amp; Mariano 1995) on loss differentials $d_t=L^{A}_t-L^{B}_t$: $DM=\bar d/\sqrt{\hat V/n}$ with a Newey–West long-run variance $\hat V=\hat\gamma_0+2\sum_{k=1}^{3}(1-\tfrac k4)\hat\gamma_k$ (Newey &amp; West 1987), the Harvey–Leybourne–Newbold (1997) small-sample correction, referred to $t_{n-1}$. Reported against $p=0.5$ and against climatology.</li>
+    <li><b>Interval forecasts</b>: empirical coverage of the 50%, 80% and 90% intervals (target equals nominal) and mean pinball loss $\rho_\tau(q,y)=\max\{\tau(y-q),(\tau-1)(y-q)\}$ averaged over the seven quantiles, in basis points.</li>
+  </ul>
+
+  <p><b>Threshold-contract (strike ladder) score.</b> The same predictive distribution prices any “above strike $K$ at the target time” question: $\Pr(S>x)=T_\nu(\mu'-x/s)$. Six fixed strikes at $x\in\{-40,-25,-10,+10,+25,+40\}$ bps around the price at issue are scored with the Brier score and compared with per-strike climatology. Because strikes far from spot are easy to call, this number is much lower than the direction Brier and depends entirely on how the strikes are spaced; it is reported separately and never mixed with the direction score. A directional Brier near 0.08 is not achievable on a near-martingale; a ladder Brier in that region only reflects easy strikes.</p>
+
+  <h3>8. The accuracy agent: how it improves without deviating</h3>
+  <ol>
+    <li><b>Confidence guard (shrinkage).</b> From live data the agent computes the ridge-regularised optimal shrinkage, the minimiser of $\sum_i(\tfrac12+\lambda(\tilde p_i-\tfrac12)-y_i)^2+\kappa\lambda^2$:
+      $$\lambda^{*}=\operatorname{clip}\!\Big(\frac{\sum_i(\tilde p_i-\frac12)(y_i-\frac12)}{\sum_i(\tilde p_i-\frac12)^2+\kappa},0,1\Big),\quad \kappa=0.2 .$$
+      The prior $\kappa$ pulls $\lambda$ toward 0, so a model has to <i>earn</i> confidence with roughly a thousand scored forecasts. It is applied only with at least 576 live forecasts, at most once per 24 h, and only if it moves by at least 0.10 (hysteresis). If the live evidence shows no skill, forecasts collapse toward 50% and the Brier score converges to the no-skill 0.25 rather than getting worse.</li>
+    <li><b>Champion/challenger search</b> every 6 hours (earlier if a degradation alarm fires). 40 challengers are generated by random multiplicative perturbations (factor in $[\tfrac12,2]$, on a log scale, or on $1-\lambda$ for decay parameters) of 1–3 hyper-parameters, or by toggling one feature. All are replayed with the production engine over the loaded 21-day history; the final 5 days (1440 bars) are the held-out block, and challengers are scored on the pre-shrink probability so that model quality is separated from the confidence guard.</li>
+    <li><b>Adoption gate.</b> The best challenger is adopted only if <i>all</i> hold: improvement in Brier $\ge2\times10^{-4}$; one-sided Diebold–Mariano $p<0.05/40$ (Bonferroni across the 40 tests); and the improvement has the same sign in both halves of the held-out block. At most one adoption per 24 hours. Otherwise the champion is kept and the numbers behind that decision are logged.</li>
+    <li><b>Live verification and rollback.</b> After an adoption, the previous champion is replayed over the live period and compared with what was actually issued (Diebold–Mariano on live pre-shrink losses). If the previous model would have been better ($\bar d>10^{-4}$, $p<0.05$, at least 288 forecasts), the agent reverts automatically.</li>
+    <li><b>Degradation alarm.</b> If over the last 288 live forecasts the model is worse than climatology by more than $5\times10^{-4}$ in mean Brier ($p<0.1$), an early search is triggered.</li>
+    <li><b>Fail-safe.</b> The runner refuses to start if the ledger's hash chain is broken, skips (and records) any bar it cannot forecast on time, and never edits past records.</li>
+  </ol>
+  <p>The agent is deliberately statistical and rule-based: it needs no paid language-model API, every decision is reproducible from the public ledger and seed, and it cannot be talked into a bad change.</p>
+
+  <h3>9. Integrity</h3>
+  <ul>
+    <li>The ledger is append-only JSON lines. Each record stores <code>hash = SHA-256(prev_hash ‖ canonical_json(record))</code>; editing any past line breaks every later hash. <code>verifyChain()</code> in <code>lib/io.js</code> checks it, and the head hash is published.</li>
+    <li>Forecasts are issued within 150 seconds of the bar close or skipped and recorded as gaps; the lag of every forecast is stored. Each record also stores the configuration hash and a digest of its input bars.</li>
+    <li>All source code, the configuration history and the ledger are downloadable below.</li>
+  </ul>
+
+  <h3>10. Limits and honest expectations</h3>
+  <ul>
+    <li>A 15-minute crypto direction forecast built from free price/volume data should be expected to deliver a Brier skill of at most a few tenths of a percent to a few percent versus 0.25, and a hit rate within a point or two of 50%. If the live record shows no significant skill, this page says so and the agent shrinks the forecasts. Claiming more would be a calibration failure.</li>
+    <li>The scores concern probabilistic accuracy of the last-trade price, not trading profit; fees, spread and slippage are ignored.</li>
+    <li>The agent's repeated searches over overlapping data carry a selection risk. The Bonferroni correction, the minimum effect size, the two-half stability rule and the live rollback test mitigate it but cannot remove it, which is why the live ledger, not the replay, is the scoreboard.</li>
+    <li>GitHub Actions schedules are best-effort: a missed bar is recorded as a gap, never invented.</li>
+  </ul>
+</section>
+
+<section id="integrity" class="card">
+  <h2>Integrity &amp; source files</h2>
+  <div class="grid g2">
+    <div>
+      <table id="intTable"></table>
+    </div>
+    <div>
+      <p style="margin-top:0">Download everything needed to reproduce this page: engine, statistics library, agent, runner, workflow, this page and the self-tests (plus the live ledger and scoreboard if you tick the box).</p>
+      <label class="muted"><input type="checkbox" id="incData" checked> include live ledger, config and scoreboard</label><br><br>
+      <button class="btn primary" id="dl">Download source files (.zip)</button>
+      <span class="muted" id="dlStatus" style="margin-left:8px"></span>
+    </div>
+  </div>
+</section>
+
+<section id="refs" class="card">
+  <h2>References</h2>
+  <ol style="font-size:13px">
+    <li>Brier, G. W. (1950). Verification of forecasts expressed in terms of probability. <i>Monthly Weather Review</i> 78(1), 1–3.</li>
+    <li>Murphy, A. H. (1973). A new vector partition of the probability score. <i>Journal of Applied Meteorology</i> 12(4), 595–600.</li>
+    <li>Gneiting, T. &amp; Raftery, A. E. (2007). Strictly proper scoring rules, prediction, and estimation. <i>Journal of the American Statistical Association</i> 102(477), 359–378.</li>
+    <li>Diebold, F. X. &amp; Mariano, R. S. (1995). Comparing predictive accuracy. <i>Journal of Business &amp; Economic Statistics</i> 13(3), 253–263.</li>
+    <li>Harvey, D., Leybourne, S. &amp; Newbold, P. (1997). Testing the equality of prediction mean squared errors. <i>International Journal of Forecasting</i> 13(2), 281–291.</li>
+    <li>Newey, W. K. &amp; West, K. D. (1987). A simple, positive semi-definite, heteroskedasticity and autocorrelation consistent covariance matrix. <i>Econometrica</i> 55(3), 703–708.</li>
+    <li>Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. <i>Annals of Statistics</i> 17(3), 1217–1241.</li>
+    <li>Freund, Y. &amp; Schapire, R. E. (1997). A decision-theoretic generalization of on-line learning and an application to boosting. <i>Journal of Computer and System Sciences</i> 55(1), 119–139.</li>
+    <li>Herbster, M. &amp; Warmuth, M. K. (1998). Tracking the best expert. <i>Machine Learning</i> 32(2), 151–178.</li>
+    <li>Duchi, J., Hazan, E. &amp; Singer, Y. (2011). Adaptive subgradient methods for online learning and stochastic optimization. <i>Journal of Machine Learning Research</i> 12, 2121–2159.</li>
+    <li>Platt, J. (1999). Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods. In <i>Advances in Large Margin Classifiers</i>, MIT Press.</li>
+    <li>Guo, C., Pleiss, G., Sun, Y. &amp; Weinberger, K. Q. (2017). On calibration of modern neural networks. <i>ICML</i>.</li>
+    <li>J.P. Morgan/Reuters (1996). <i>RiskMetrics — Technical Document</i>, 4th ed.</li>
+    <li>Fama, E. F. (1970). Efficient capital markets: a review of theory and empirical work. <i>Journal of Finance</i> 25(2), 383–417.</li>
+  </ol>
+  <p class="muted" style="font-size:13px">Data: Coinbase Exchange public market-data API (candles, ticker, WebSocket feed); cross-checks from the Kraken and Bitstamp public ticker endpoints.</p>
+</section>
+
+<footer>Research and education only. Not financial advice. Probabilities are forecasts, not guarantees.</footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

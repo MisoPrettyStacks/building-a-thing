@@ -1,0 +1,12 @@
+{
+  "name": "xrp-15-minute-forecast",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/selftest.js && node scripts/selftest-pipeline.js",
+    "run-once": "node scripts/runner.js --data ./data-branch",
+    "run-loop": "node scripts/runner.js --data ./data-branch --minutes 300"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,23 @@
+{
+  "files": [
+    ".github/workflows/forecast.yml",
+    ".nojekyll",
+    "README.md",
+    "app.js",
+    "index.html",
+    "lib/agent.js",
+    "lib/data.js",
+    "lib/engine.js",
+    "lib/io.js",
+    "lib/stats.js",
+    "lib/summary.js",
+    "package.json",
+    "scripts/make-manifest.js",
+    "scripts/runner.js",
+    "scripts/selftest-pipeline.js",
+    "scripts/selftest.js",
+    "scripts/smoke-ui.js",
+    "site-config.json",
+    "style.css"
+  ]
+}
