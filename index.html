@@ -33,8 +33,13 @@
 </nav>
 
 <section id="live" class="chartrow">
-  <div class="card" style="margin:0">
+  <div class="card" style="margin:0;position:relative">
     <canvas id="chart" aria-label="Live XRP-USD 1-minute candles with the current forecast cone"></canvas>
+    <div class="zoomctl">
+      <button id="zin" title="Zoom in">+</button>
+      <button id="zout" title="Zoom out">&minus;</button>
+      <button id="zfit" title="Show everything"><span id="zlabel">all</span></button>
+    </div>
     <div class="muted" style="font-size:12px;margin-top:6px">1-minute candles (real Coinbase data). The shaded cone is the official forecast's 50% and 90% intervals for the target time; dots mark recently scored forecasts (green = direction called correctly).</div>
   </div>
   <div class="card" style="margin:0" id="fcCard">

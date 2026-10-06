@@ -62,3 +62,9 @@ pre { background: var(--panel2); padding: 12px; border-radius: 8px; overflow: au
 nav.toc { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; padding-bottom: 6px; }
 footer { color: var(--muted); font-size: 13px; margin-top: 30px; }
 .empty { color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+
+/* chart zoom controls */
+.zoomctl { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; align-items: center; z-index: 2; }
+.zoomctl button { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); font-size: 15px; line-height: 1; cursor: pointer; }
+.zoomctl button:hover { filter: brightness(1.08); }
+#zfit { font-size: 11px; color: var(--muted); }

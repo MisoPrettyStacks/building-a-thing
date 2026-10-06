@@ -45,7 +45,7 @@ async function loadSummary() {
 }
 
 /* ---------------- live price + chart ---------------- */
-const chart = { candles: [], last: null };
+const chart = { candles: [], last: null, viewMin: null };
 let ws = null, wsAlive = 0;
 
 async function loadCandles() {
@@ -64,7 +64,7 @@ function onTick(price, tsMs) {
   if (!cs.length) return;
   const last = cs[cs.length - 1];
   if (last.t === minute) { last.c = price; last.h = Math.max(last.h, price); last.l = Math.min(last.l, price); }
-  else if (minute > last.t) { cs.push({ t: minute, o: price, h: price, l: price, c: price, v: 0 }); if (cs.length > 300) cs.shift(); }
+  else if (minute > last.t) { cs.push({ t: minute, o: price, h: price, l: price, c: price, v: 0 }); if (cs.length > 1600) cs.shift(); }
   schedDraw();
 }
 function connectWS() {
@@ -96,6 +96,36 @@ function renderFeedBadge() {
 let drawQueued = false;
 function schedDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(() => { drawQueued = false; drawChart(); }); } }
 
+/* ---------------- chart zoom (visible time window only; nothing else changes) ---------------- */
+const ZMIN = 15, ZMAX = 1440; // minutes
+let histLoading = false;
+async function ensureHistory(minutes) {
+  const need = Math.min(Math.ceil(minutes) + 2, ZMAX);
+  const haveMin = chart.candles.length ? (Date.now() / 1000 - chart.candles[0].t) / 60 : 0;
+  if (haveMin >= need || histLoading) return;
+  histLoading = true;
+  try {
+    const bars = await fetchBars(need + 5, { step: 60 });
+    const m = new Map(bars.map((b) => [b.t, b]));
+    for (const c of chart.candles) m.set(c.t, c); // live candles win on overlap
+    chart.candles = [...m.values()].sort((a, b) => a.t - b.t);
+  } catch { /* keep whatever history we already have */ }
+  histLoading = false;
+  schedDraw();
+}
+function setZoom(minutes) {
+  chart.viewMin = minutes == null ? null : Math.min(ZMAX, Math.max(ZMIN, minutes));
+  if (chart.viewMin != null) ensureHistory(chart.viewMin);
+  schedDraw();
+}
+function zoomBy(f) {
+  const cs = chart.candles;
+  if (!cs.length) return;
+  const cur = chart.viewMin == null ? (cs[cs.length - 1].t + 60 - cs[0].t) / 60 : chart.viewMin;
+  setZoom(cur * f);
+}
+function fmtSpan(m) { return 'last ' + (m >= 60 ? (m / 60).toFixed(1).replace(/\.0$/, '') + 'h' : Math.round(m) + 'm'); }
+
 function drawChart() {
   const cv = $('chart');
   const dpr = window.devicePixelRatio || 1;
@@ -109,13 +139,18 @@ function drawChart() {
   const ink = css('--ink'), muted = css('--muted'), line = css('--line'), up = css('--up'), down = css('--down'), accent = css('--accent');
   if (!cs.length) { ctx.fillStyle = muted; ctx.font = '14px system-ui'; ctx.fillText('Waiting for real-time candles…', 20, 40); return; }
   const pad = { l: 8, r: 64, t: 12, b: 24 };
-  const tMin = cs[0].t, tEnd = cs[cs.length - 1].t + 60;
+  const tEnd = cs[cs.length - 1].t + 60;
+  const spanMin = (tEnd - cs[0].t) / 60;
+  const viewMin = chart.viewMin == null ? spanMin : Math.min(chart.viewMin, spanMin);
+  const tMin = tEnd - viewMin * 60;
+  const zl = $('zlabel');
+  if (zl) zl.textContent = chart.viewMin == null ? 'all' : fmtSpan(viewMin);
   const fc = summary?.latest;
   const nowS = Date.now() / 1000;
   const showCone = fc && fc.q && nowS - fc.t_issue < 45 * 60 && fc.t_issue >= tMin;
   const tMax = Math.max(tEnd + 120, showCone ? fc.target_t + 120 : 0);
   let lo = Infinity, hi = -Infinity;
-  for (const c of cs) { lo = Math.min(lo, c.l); hi = Math.max(hi, c.h); }
+  for (const c of cs) { if (c.t < tMin) continue; lo = Math.min(lo, c.l); hi = Math.max(hi, c.h); }
   if (showCone) { lo = Math.min(lo, fc.c0 * Math.exp(fc.q[0])); hi = Math.max(hi, fc.c0 * Math.exp(fc.q[6])); }
   const m = (hi - lo) * 0.06 || hi * 0.001; lo -= m; hi += m;
   const X = (t) => pad.l + ((t - tMin) / (tMax - tMin)) * (W - pad.l - pad.r);
@@ -129,7 +164,7 @@ function drawChart() {
     ctx.fillText(p.toFixed(4), W - pad.r + 6, y);
   }
   ctx.textBaseline = 'alphabetic';
-  const tick = 30 * 60;
+  const tick = (viewMin <= 60 ? 10 : viewMin <= 180 ? 30 : viewMin <= 720 ? 120 : 240) * 60;
   for (let t = Math.ceil(tMin / tick) * tick; t < tMax; t += tick) {
     const x = X(t);
     ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, H - pad.b); ctx.stroke();
@@ -436,6 +471,10 @@ async function downloadZip() {
 /* ---------------- boot ---------------- */
 document.querySelectorAll('#winTabs button').forEach((b) => b.addEventListener('click', () => renderScore(b.dataset.w)));
 $('dl').addEventListener('click', downloadZip);
+$('zin').addEventListener('click', () => zoomBy(1 / 1.6));
+$('zout').addEventListener('click', () => zoomBy(1.6));
+$('zfit').addEventListener('click', () => setZoom(null));
+$('chart').addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY > 0 ? 1.25 : 1 / 1.25); }, { passive: false });
 window.addEventListener('resize', () => { schedDraw(); renderScore(currentWin); });
 window.addEventListener('load', () => {
   if (window.renderMathInElement) {
