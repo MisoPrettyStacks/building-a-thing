@@ -240,6 +240,39 @@ function tickCountdown() {
   const t = Date.now() / 1000, next = (Math.floor(t / 300) + 1) * 300 + 10, s = Math.max(0, Math.round(next - t));
   $('fcNext').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   renderFeedBadge();
+  renderWindow();
+}
+
+/* ---------------- 15-minute window panel (:00/:15/:30/:45) ---------------- */
+function windowBounds(nowMs) {
+  const s = Math.floor(nowMs / 1000);
+  const start = Math.floor(s / 900) * 900;
+  return { start, end: start + 900 };
+}
+const fmtET = (tsMs) => new Date(tsMs).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+function renderWindow() {
+  if (!$('wCard')) return;
+  const now = Date.now();
+  const { start, end } = windowBounds(now);
+  $('wRange').textContent = `${fmtET(start * 1000)} – ${fmtET(end * 1000)} ET`;
+  const s = Math.max(0, end - Math.floor(now / 1000));
+  $('wCount').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const W = summary?.window_fc;
+  if (!W || W.p == null || !W.c0) {
+    $('wPup').textContent = '—'; $('wPdown').textContent = '—'; $('wRef').textContent = '—';
+    $('wPx').textContent = '—'; $('wVs').textContent = 'waiting for the window forecast';
+    return;
+  }
+  $('wPup').textContent = (W.p * 100).toFixed(1) + '%';
+  $('wBar').style.width = (W.p * 100).toFixed(1) + '%';
+  $('wPdown').textContent = ((1 - W.p) * 100).toFixed(1) + '%';
+  $('wRef').textContent = usd(W.c0);
+  $('wPx').textContent = W.q ? usd(W.c0 * Math.exp(W.q[3])) : '—';
+  const last = chart.last;
+  if (last && W.c0) {
+    const bps = (last / W.c0 - 1) * 1e4;
+    $('wVs').innerHTML = `<span class="${bps >= 0 ? 'up' : 'down'}">${bps >= 0 ? '+' : ''}${bps.toFixed(1)} bps ${bps >= 0 ? 'above' : 'below'}</span>`;
+  } else $('wVs').textContent = '—';
 }
 
 /* ---------------- score tiles + diagrams ---------------- */

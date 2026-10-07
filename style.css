@@ -27,6 +27,7 @@ h3 { font-size: 15px; margin: 18px 0 6px; }
 .grid { display: grid; gap: 14px; }
 .g2 { grid-template-columns: 1fr; } .g3 { grid-template-columns: 1fr; } .g4 { grid-template-columns: repeat(2, 1fr); }
 @media (min-width: 860px) { .g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); } .g4 { grid-template-columns: repeat(4, 1fr); } .chartrow { grid-template-columns: 1fr 300px; } }
+@media (min-width: 1280px) { .chartrow { grid-template-columns: 1fr 300px 300px; } }
 .chartrow { display: grid; gap: 14px; grid-template-columns: 1fr; }
 canvas { width: 100%; display: block; }
 #chart { height: 380px; }
